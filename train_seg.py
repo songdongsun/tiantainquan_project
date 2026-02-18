@@ -1,3 +1,5 @@
+from tests.test_python import image
+
 from ultralytics import YOLO
 import torch
 
@@ -19,6 +21,6 @@ if __name__ == "__main__":
     print("模型加载成功！")
     model.info()  # 打印模型结构
 
-    results = model.train(data="./tiantianquan/cfg/dataset.yaml", device=device, cfg="tiantianquan-seg-default.yaml")
+    results = model.train(data="./tiantianquan/cfg/dataset.yaml", device=device)
 
     print(f"模型训练结果:{results}")

@@ -1,0 +1,24 @@
+from ultralytics import YOLO
+import torch
+
+
+
+
+if __name__ == "__main__":
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    print("运行设备：{}",device)
+
+    # 2. 第一步：加载自定义分割配置（纯分割，无文本）
+    model = YOLO("./tiantianquan/cfg/tiantianquan-seg.yaml")
+
+    # 3. 第二步：加载官方预训练权重（分开调用，避免链式冲突）
+    model.load("yolov8n-seg.pt")
+
+    # model = YOLO('yolov8n-seg.pt')
+
+    print("模型加载成功！")
+    model.info()  # 打印模型结构
+
+    results = model.train(data="./tiantianquan/cfg/dataset.yaml", device=device, cfg="tiantianquan-seg-default.yaml")
+
+    print(f"模型训练结果:{results}")

@@ -1427,7 +1427,7 @@ def torch_safe_load(weight, safe_only=False):
 
     Examples:
         >>> from ultralytics.nn.tasks import torch_safe_load
-        >>> ckpt, file = torch_safe_load("path/to/best.pt", safe_only=True)
+        >>> ckpt, file = torch_safe_load("path/to/best_seg.pt", safe_only=True)
     """
     from ultralytics.utils.downloads import attempt_download_asset
 

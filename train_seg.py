@@ -21,6 +21,13 @@ if __name__ == "__main__":
     print("模型加载成功！")
     model.info()  # 打印模型结构
 
-    results = model.train(data="./tiantianquan/cfg/dataset.yaml", device=device)
+    results = model.train(data="./tiantianquan/cfg/dataset.yaml",
+                          device=device,
+                          epochs = 100,
+                          patience = 10,
+                          optimizer='AdamW',  # 指定优化器为AdamW
+                          lr0=0.001,  # AdamW学习率（SGD的1/10）
+                          weight_decay=0.0005,
+                          )
 
     print(f"模型训练结果:{results}")

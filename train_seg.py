@@ -30,4 +30,3 @@ if __name__ == "__main__":
                           weight_decay=0.0005,
                           )
 
-    print(f"模型训练结果:{results}")

@@ -5,3 +5,4 @@ test: # test images (optional)
 
 nc: 2
 names: ["outerCircle", "insideCircle"]
+cls_weights: [1.5, 1.0]

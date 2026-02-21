@@ -12,7 +12,7 @@ def classify_images_by_labels(
     """
     基于 SOURCE_ROOT/images 和 SOURCE_ROOT/labels 文件夹分类数据，
     输出目录保持 images/labels 子文件夹结构：
-    - ng/images: 有标签的图片 | ng/labels: 对应的标签文件
+    - pt_ng/images: 有标签的图片 | pt_ng/labels: 对应的标签文件
     - other/images: 无标签的图片 | other/labels: 不创建（无标签）
     （复制而非移动，不修改原数据）
 
@@ -37,8 +37,8 @@ def classify_images_by_labels(
         raise FileNotFoundError(f"标签文件夹不存在: {src_labels}")
 
     # ========== 1. 创建输出目录结构 ==========
-    # NG目录结构：ng/images + ng/labels
-    ng_root = output_path / "ng"
+    # NG目录结构：pt_ng/images + pt_ng/labels
+    ng_root = output_path / "pt_ng"
     ng_images = ng_root / "images"
     ng_labels = ng_root / "labels"
     ng_images.mkdir(parents=True, exist_ok=True)
@@ -69,19 +69,19 @@ def classify_images_by_labels(
 
         if label_filepath.exists():
             # ========== 有标签 → NG目录（保持images/labels结构） ==========
-            # 复制图片到 ng/images
+            # 复制图片到 pt_ng/images
             img_target = ng_images / img_name
             shutil.copy2(image_file, img_target)
             ng_image_count += 1
 
-            # 复制标签到 ng/labels
+            # 复制标签到 pt_ng/labels
             label_target = ng_labels / label_filename
             shutil.copy2(label_filepath, label_target)
             ng_label_count += 1
 
             # 打印处理信息
-            print(f"[NG] 处理图片: {img_name} → ng/images")
-            print(f"     对应标签: {label_filename} → ng/labels")
+            print(f"[NG] 处理图片: {img_name} → pt_ng/images")
+            print(f"     对应标签: {label_filename} → pt_ng/labels")
         else:
             # ========== 无标签 → OTHER目录（仅images） ==========
             # 复制图片到 other/images
@@ -97,8 +97,8 @@ def classify_images_by_labels(
     print(f"原始images文件夹总图片数: {total_image_count}")
     print("-" * 40)
     print(f"NG目录结构: {ng_root}")
-    print(f"  - ng/images: {ng_image_count} 张图片")
-    print(f"  - ng/labels: {ng_label_count} 个标签文件")
+    print(f"  - pt_ng/images: {ng_image_count} 张图片")
+    print(f"  - pt_ng/labels: {ng_label_count} 个标签文件")
     print("-" * 40)
     print(f"OTHER目录结构: {other_root}")
     print(f"  - other/images: {other_image_count} 张图片")
@@ -108,9 +108,9 @@ def classify_images_by_labels(
 # ==================== 配置参数 ====================
 if __name__ == "__main__":
     # 原始数据根目录（含images/labels子文件夹）
-    SOURCE_ROOT = r"E:\workspace-pycharm\ttq_dataset\data\dataset3"
+    SOURCE_ROOT = r"E:\workspace-pycharm\ultralytics\tiantianquan\dataset\spilt_data"
     # 输出根目录（会生成ng/other及子文件夹）
-    OUTPUT_ROOT_DIR = r"E:\workspace-pycharm\ttq_dataset\data\ng_other"
+    OUTPUT_ROOT_DIR = r"E:\workspace-pycharm\ultralytics\tiantianquan\dataset\target_data"
 
     # 执行分类
     classify_images_by_labels(

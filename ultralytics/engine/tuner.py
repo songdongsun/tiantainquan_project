@@ -270,7 +270,7 @@ class Tuner:
         if not np.isfinite(weights).all() or weights.sum() == 0:
             weights = np.ones_like(weights)
         idxs = random.choices(range(len(x)), weights=weights, k=k)
-        parents_mat = np.stack([x[i][1:] for i in idxs], 0)  # (k, ng) strip fitness
+        parents_mat = np.stack([x[i][1:] for i in idxs], 0)  # (k, pt_ng) strip fitness
         lo, hi = parents_mat.min(0), parents_mat.max(0)
         span = hi - lo
         # given a small value when span is zero to avoid no mutation

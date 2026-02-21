@@ -146,7 +146,7 @@ class NGPipeline:
         """
         self.is_debug = is_debug
         self.seg_model = ImageYoloSegmentation(seg_model_path, class_names={0: "outter", 1: "inner"})
-        self.det_model = ImageYoloDetect(det_model_path, class_names={0: "ng"},
+        self.det_model = ImageYoloDetect(det_model_path, class_names={0: "pt_ng"},
                                          yolo_type="yolov5", model_size=(1120, 1120))
 
     def segment_image(self, image):
@@ -220,7 +220,7 @@ class NGPipeline:
                 'bbox': boxes[idx].tolist(),
                 'confidence': float(scores[idx]),
                 'class_id': int(class_ids[idx]),
-                'class_name': "ng"
+                'class_name': "pt_ng"
             })
         return final_results
 
@@ -323,7 +323,7 @@ if __name__ == "__main__":
 #     is_debug = True
 #     image = cv2.imread(path)
 #     quan_seg = ImageYoloSegmentation(quan_seg_model, class_names={0: "outter", 1: "inner"})
-#     det_box = ImageYoloDetect(det_model, class_names={0: "ng"}, yolo_type="yolov5", model_size=(1120, 1120))
+#     det_box = ImageYoloDetect(det_model, class_names={0: "pt_ng"}, yolo_type="yolov5", model_size=(1120, 1120))
 #     # 在原图中分割得到目标区域，坐标已还原到image中
 #     quan_seg_result = quan_seg.predict(image)
 #
@@ -402,7 +402,7 @@ if __name__ == "__main__":
 #                 'bbox': boxes_np[idx].tolist(),
 #                 'confidence': float(scores_np[idx]),
 #                 'class_id': int(class_ids_np[idx]),
-#                 'class_name': 'ng'  # 根据您的类别映射设置
+#                 'class_name': 'pt_ng'  # 根据您的类别映射设置
 #             })
 #
 #         # 打印或使用最终结果

@@ -190,8 +190,8 @@ def batch_process_dataset(input_root: str, output_root: str, area_size: int = 25
 
 if __name__ == '__main__':
     # ====================== 只需配置以下参数 ======================
-    INPUT_DATASET_ROOT = r"E:\workspace-pycharm\ttq_dataset\data\dataset3"  # 输入数据集根目录
-    OUTPUT_DATASET_ROOT = r"E:\workspace-pycharm\ttq_dataset\data\dataset_spilt"  # 输出根目录
+    INPUT_DATASET_ROOT = r"E:\workspace-pycharm\ultralytics\tiantianquan\dataset\src_data"  # 输入数据集根目录
+    OUTPUT_DATASET_ROOT = r"E:\workspace-pycharm\ultralytics\tiantianquan\dataset\spilt_data"  # 输出根目录
     CROP_AREA_SIZE = 250  # 裁剪偏移尺寸（像素，匹配你说的250px重叠区域）
     # ============================================================
 

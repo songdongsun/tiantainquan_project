@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     results = model.train(data="./tiantianquan/cfg/dataset_pt.yaml",
                           device=device,
-                          epochs = 100,
+                          epochs = 200,
                           patience = 10,
                           optimizer='SGD',  # 指定优化器为AdamW
                           lr0=0.01,  # AdamW学习率（SGD的1/10）

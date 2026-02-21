@@ -52,6 +52,7 @@ __all__ = (
     "ResNetLayer",
     "SCDown",
     "TorchVision",
+    "SPPCSPC"
 )
 
 
@@ -2065,3 +2066,47 @@ class RealNVP(nn.Module):
             self.float()
         z, log_det = self.backward_p(x)
         return self.prior.log_prob(z) + log_det
+
+
+class SPPCSPC(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=(5, 9, 13)):
+        """
+        SPPCSPC模块初始化
+        Args:
+            c1: 输入通道数
+            c2: 输出通道数
+            n: 卷积层数量
+            shortcut: 是否使用shortcut连接
+            g: 分组卷积的组数
+            e: 通道缩放因子
+            k: 池化核大小
+        """
+        super().__init__()
+        c_ = int(2 * c2 * e)  # 隐藏层通道数
+        self.cv1 = Conv(c1, c_, 1, 1)  # 1x1卷积降维
+        self.cv2 = Conv(c1, c_, 1, 1)  # 另一个分支的1x1卷积
+        self.cv3 = Conv(c_, c_, 3, 1)  # 3x3卷积
+        self.cv4 = Conv(c_, c_, 1, 1)  # 1x1卷积
+        # 不同尺度的池化层
+        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
+        self.cv5 = Conv(4 * c_, c_, 1, 1)  # 融合多尺度特征后的1x1卷积
+        self.cv6 = Conv(c_, c_, 3, 1)  # 3x3卷积
+        self.cv7 = Conv(2 * c_, c2, 1, 1)  # 最终输出卷积
+        self.shortcut = shortcut
+
+    def forward(self, x):
+        """前向传播"""
+        x1 = self.cv4(self.cv3(self.cv1(x)))
+
+        # 多尺度池化并拼接
+        y1 = self.cv5(torch.cat([x1] + [m(x1) for m in self.m], 1))
+        y2 = self.cv6(y1)
+
+        # 拼接两个分支并输出
+        out = self.cv7(torch.cat((y1, y2), dim=1))
+
+        # shortcut连接（如果开启）
+        if self.shortcut:
+            out = out + self.cv2(x)
+
+        return out

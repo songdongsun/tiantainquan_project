@@ -14,7 +14,7 @@ if __name__ == "__main__":
     model = YOLO("./tiantianquan/cfg/tiantianquan-pt.yaml")
 
     # 3. 第二步：加载官方预训练权重（分开调用，避免链式冲突）
-    model.load("yolov8s.pt")
+    model.load("yolov8n.pt")
 
     # model = YOLO('yolov8n-seg.pt')
 

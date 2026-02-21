@@ -14,7 +14,7 @@ if __name__ == "__main__":
     model = YOLO("./tiantianquan/cfg/tiantianquan-pt.yaml")
 
     # 3. 第二步：加载官方预训练权重（分开调用，避免链式冲突）
-    model.load("yolov8s.pt")
+    model.load("yolov8n.pt")
 
     # model = YOLO('yolov8n-seg.pt')
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     results = model.train(data="./tiantianquan/cfg/dataset_pt.yaml",
                           device=device,
                           epochs = 200,
-                          patience = 10,
+                          patience = 15,
                           optimizer='SGD',  # 指定优化器为AdamW
                           lr0=0.01,  # AdamW学习率（SGD的1/10）
                           weight_decay=0.0005,

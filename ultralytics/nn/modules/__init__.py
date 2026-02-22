@@ -76,7 +76,8 @@ from .conv import (
     LightConv,
     RepConv,
     SpatialAttention,
-    BiFPN_Concat2
+    BiFPN_Concat2,
+    CAAttention
 )
 from .head import (
     OBB,
@@ -191,4 +192,5 @@ __all__ = (
     "v10Detect",
     "BiFPN_Concat2",
     "SPPCSPC",
+    "CAAttention",
 )

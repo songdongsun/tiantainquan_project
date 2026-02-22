@@ -474,34 +474,32 @@ class v8DetectionLoss:
 
         # Bbox loss
         if fg_mask.sum():
-            loss[0], loss[2] = self.bbox_loss(
-                pred_distri,
-                pred_bboxes,
-                anchor_points,
-                target_bboxes / stride_tensor,
-                target_scores,
-                target_scores_sum,
-                fg_mask,
-                imgsz,
-                stride_tensor,
-            )
+            # loss[0], loss[2] = self.bbox_loss(
+            #     pred_distri,
+            #     pred_bboxes,
+            #     anchor_points,
+            #     target_bboxes / stride_tensor,
+            #     target_scores,
+            #     target_scores_sum,
+            #     fg_mask,
+            #     imgsz,
+            #     stride_tensor,
+            # )
             # ===================== 温和叠加 DIoU + NWD =====================
             pred_bboxes_fg = pred_bboxes[fg_mask]
             target_bboxes_fg = (target_bboxes / stride_tensor)[fg_mask]
 
             # DIoU
             diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg, xywh=False, DIoU=True)
-            diou_loss = (1.0 - diou).mean()
+            loss[0] = (1.0 - diou).mean()
 
             # NWD
-            nwd_loss_val = nwd_loss(pred_bboxes_fg, target_bboxes_fg, constant=self.nwd_constant).mean()
+            loss[2] = nwd_loss(pred_bboxes_fg, target_bboxes_fg, constant=self.nwd_constant).mean()
 
-            # 混合：原始box_loss占70%，DIoU+NWD占30%（非常温和）
-            loss[0] = self.diou_weight * diou_loss + self.nwd_weight * nwd_loss_val
 
-        loss[0] *= self.hyp.box  # box gain
+        loss[0] *= + self.diou_weight   # box gain
         loss[1] *= self.hyp.cls  # cls gain
-        loss[2] *= self.hyp.dfl  # dfl gain
+        loss[2] *= self.nwd_weight  # dfl gain
 
 
 

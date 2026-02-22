@@ -129,8 +129,8 @@ erasing: 0.4 # (float) random erasing probability for classification (0.0–1.0)
 
 # ===================== 新增自定义损失配置项（DIoU/NWD权重） =====================
 # 自定义超参数，用于控制DIoU和NWD的加权比例
-diou_weight: 0.7   # DIoU Loss权重（聚焦距离）
-nwd_weight: 0.3    # NWD Loss权重（小目标优化）
+diou_weight: 7.5   # DIoU Loss权重（聚焦距离）
+nwd_weight: 1.5   # NWD Loss权重（小目标优化）
 nwd_constant: 6.4 # NWD Loss的归一化常数C（适配小目标）
 
 # Custom config.yaml ---------------------------------------------------------------------------------------------------

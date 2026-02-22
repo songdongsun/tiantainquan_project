@@ -431,10 +431,6 @@ class v8DetectionLoss:
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = pred_dist.view(b, a, c // 4, 4).transpose(2,3).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
-        else:
-            # ===================== 修复：关闭DFL时，直接取前4维或平均维度 =====================
-            # 方案1：取每个坐标的第一个分布值（最简单，适配reg_max>1的情况）
-            pred_dist = pred_dist[..., :4]
 
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
@@ -477,48 +473,36 @@ class v8DetectionLoss:
         loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
 
         # Bbox loss
-        # if fg_mask.sum():
-        #     loss[0], loss[2] = self.bbox_loss(
-        #         pred_distri,
-        #         pred_bboxes,
-        #         anchor_points,
-        #         target_bboxes / stride_tensor,
-        #         target_scores,
-        #         target_scores_sum,
-        #         fg_mask,
-        #         imgsz,
-        #         stride_tensor,
-        #     )
-        #
-        # loss[0] *= self.hyp.box  # box gain
-        # loss[1] *= self.hyp.cls  # cls gain
-        # loss[2] *= self.hyp.dfl  # dfl gain
-        # ===================== 重构Bbox Loss计算（DIoU + NWD + 关闭DFL） =====================
-        # Bbox loss
         if fg_mask.sum():
-            # 1. 提取前景框的预测和目标
-            pred_bboxes_fg = pred_bboxes[fg_mask]  # [fg, 4] (xyxy)
-            target_bboxes_fg = (target_bboxes / stride_tensor)[fg_mask]  # [fg, 4] (xyxy)
-            target_scores_fg = target_scores[fg_mask]  # [fg, nc]
+            loss[0], loss[2] = self.bbox_loss(
+                pred_distri,
+                pred_bboxes,
+                anchor_points,
+                target_bboxes / stride_tensor,
+                target_scores,
+                target_scores_sum,
+                fg_mask,
+                imgsz,
+                stride_tensor,
+            )
+            # ===================== 温和叠加 DIoU + NWD =====================
+            pred_bboxes_fg = pred_bboxes[fg_mask]
+            target_bboxes_fg = (target_bboxes / stride_tensor)[fg_mask]
 
-            # 2. 计算DIoU Loss（替换CIoU）
-            # 注意：bbox_iou的iou_type参数设为"diou"，xyxy格式需指定xyxy=True
-            diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg,  xywh=False, DIoU=True)
-            diou_loss = (1.0 - diou).mean()  # DIoU Loss = 1 - DIoU
+            # DIoU
+            diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg, xywh=False, DIoU=True)
+            diou_loss = (1.0 - diou).mean()
 
-            # 3. 计算NWD Loss（小目标友好），传入配置的常数
+            # NWD
             nwd_loss_val = nwd_loss(pred_bboxes_fg, target_bboxes_fg, constant=self.nwd_constant).mean()
 
-            # 4. 合并DIoU和NWD Loss（加权求和）
-            loss[0] = self.diou_weight * diou_loss + self.nwd_weight * nwd_loss_val
+            # 混合：原始box_loss占70%，DIoU+NWD占30%（非常温和）
+            loss[0] = 0.7 * loss[0] + 0.3 * (diou_loss + nwd_loss_val)
 
-            # 5. 强制关闭DFL Loss（置0）
-            loss[2] = 0.0
+        loss[0] *= self.hyp.box  # box gain
+        loss[1] *= self.hyp.cls  # cls gain
+        loss[2] *= self.hyp.dfl  # dfl gain
 
-        # 应用损失权重
-        loss[0] *= self.hyp.box  # box gain（你的配置是7.5）
-        loss[1] *= self.hyp.cls  # cls gain（你的配置是0.5）
-        loss[2] *= self.hyp.dfl  # dfl gain（即使配置不为0，loss[2]已置0）
 
 
         return (

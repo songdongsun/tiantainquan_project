@@ -101,7 +101,7 @@ warmup_momentum: 0.8 # (float) initial momentum during warmup
 warmup_bias_lr: 0.1 # (float) bias learning rate during warmup
 box: 7.5 # (float) box loss gain
 cls: 0.5 # (float) classification loss gain
-dfl: 0.0 # (float) distribution focal loss gain
+dfl: 1.0 # (float) distribution focal loss gain
 pose: 12.0 # (float) pose loss gain (pose tasks)
 kobj: 1.0 # (float) keypoint objectness loss gain (pose tasks)
 rle: 1.0 # (float) rle loss gain (pose tasks)
@@ -131,7 +131,7 @@ erasing: 0.4 # (float) random erasing probability for classification (0.0–1.0)
 # 自定义超参数，用于控制DIoU和NWD的加权比例
 diou_weight: 0.7   # DIoU Loss权重（聚焦距离）
 nwd_weight: 0.3    # NWD Loss权重（小目标优化）
-nwd_constant: 12.8 # NWD Loss的归一化常数C（适配小目标）
+nwd_constant: 6.4 # NWD Loss的归一化常数C（适配小目标）
 
 # Custom config.yaml ---------------------------------------------------------------------------------------------------
 cfg: # (str, optional) path to a config.yaml that overrides defaults

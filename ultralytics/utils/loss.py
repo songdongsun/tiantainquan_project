@@ -503,7 +503,7 @@ class v8DetectionLoss:
 
             # 2. 计算DIoU Loss（替换CIoU）
             # 注意：bbox_iou的iou_type参数设为"diou"，xyxy格式需指定xyxy=True
-            diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg, xyxy=True, iou_type="diou")
+            diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg,  xywh=False, DIoU=True)
             diou_loss = (1.0 - diou).mean()  # DIoU Loss = 1 - DIoU
 
             # 3. 计算NWD Loss（小目标友好），传入配置的常数

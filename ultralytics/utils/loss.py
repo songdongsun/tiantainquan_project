@@ -426,13 +426,16 @@ class v8DetectionLoss:
 
     def bbox_decode(self, anchor_points: torch.Tensor, pred_dist: torch.Tensor) -> torch.Tensor:
         """Decode predicted object bounding box coordinates from anchor points and distribution."""
-        # if self.use_dfl:
-            # b, a, c = pred_dist.shape  # batch, anchors, channels
-            # pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
-            # ===================== 修改3：关闭DFL解码逻辑 =====================
-            # 直接返回dist2bbox，不做DFL的softmax+matmul操作
+        if self.use_dfl:
+            b, a, c = pred_dist.shape  # batch, anchors, channels
+            pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = pred_dist.view(b, a, c // 4, 4).transpose(2,3).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
+        else:
+            # ===================== 修复：关闭DFL时，直接取前4维或平均维度 =====================
+            # 方案1：取每个坐标的第一个分布值（最简单，适配reg_max>1的情况）
+            pred_dist = pred_dist[..., :4]
+
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
     def get_assigned_targets_and_loss(self, preds: dict[str, torch.Tensor], batch: dict[str, Any]) -> tuple:

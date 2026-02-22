@@ -497,7 +497,7 @@ class v8DetectionLoss:
             nwd_loss_val = nwd_loss(pred_bboxes_fg, target_bboxes_fg, constant=self.nwd_constant).mean()
 
             # 混合：原始box_loss占70%，DIoU+NWD占30%（非常温和）
-            loss[0] = 0.7 * loss[0] + 0.3 * (diou_loss + nwd_loss_val)
+            loss[0] = self.diou_weight * diou_loss + self.nwd_weight * nwd_loss_val
 
         loss[0] *= self.hyp.box  # box gain
         loss[1] *= self.hyp.cls  # cls gain

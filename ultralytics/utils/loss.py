@@ -18,6 +18,47 @@ from .metrics import bbox_iou, probiou
 from .tal import bbox2dist, rbox2dist
 
 
+def nwd_loss(pred, target, eps=1e-7, constant=None):
+    """
+    归一化沃斯斯坦距离（NWD）Loss，适配小目标缺陷检测
+    Args:
+        pred: 预测框 [N, 4] (xyxy格式)
+        target: 真实框 [N, 4] (xyxy格式)
+        eps: 防止除零/数值不稳定的小常数
+        constant: 归一化常数C（优先使用传入值，默认12.8）
+    Returns:
+        Tensor: NWD损失值 [N]
+    """
+    # 使用配置中的常数，默认12.8
+    constant = constant if constant is not None else 12.8
+
+    # 转换为xywh格式（中心坐标+宽高）
+    pred_xywh = xyxy2xywh(pred)
+    target_xywh = xyxy2xywh(target)
+
+    # 提取中心点和宽高
+    center1 = pred_xywh[:, :2]  # [N, 2]
+    center2 = target_xywh[:, :2]  # [N, 2]
+    w1, h1 = pred_xywh[:, 2], pred_xywh[:, 3]  # [N]
+    w2, h2 = target_xywh[:, 2], target_xywh[:, 3]  # [N]
+
+    # 计算中心点距离的平方
+    center_distance = torch.sum((center1 - center2) ** 2, dim=1) + eps  # [N]
+
+    # 计算尺度差异的平方 (sigma = w/6)
+    wh_diff = torch.stack([(w1 - w2) / 6, (h1 - h2) / 6], dim=1)  # [N, 2]
+    wh_distance = torch.sum(wh_diff ** 2, dim=1)  # [N]
+
+    # 计算W2^2
+    wasserstein_2 = center_distance + wh_distance  # [N]
+
+    # 计算NWD (指数归一化)
+    nwd = torch.exp(-torch.sqrt(wasserstein_2) / constant)  # [N]
+
+    # 计算最终的NWD损失
+    nwd_loss = -torch.log(1 - nwd + eps)  # [N]
+    return nwd_loss
+
 class VarifocalLoss(nn.Module):
     """Varifocal loss by Zhang et al.
 
@@ -347,7 +388,13 @@ class v8DetectionLoss:
         self.reg_max = m.reg_max
         self.device = device
 
-        self.use_dfl = m.reg_max > 1
+        # self.use_dfl = m.reg_max > 1
+        # ===================== 读取YAML中的DFL配置（关闭DFL） =====================
+        self.use_dfl = False if self.hyp.get('dfl', 1.5) == 0.0 else (m.reg_max > 1)
+        # ===================== 读取YAML中的DIoU/NWD权重配置 =====================
+        self.diou_weight = self.hyp.get('diou_weight', 0.7)  # 从YAML读取，默认0.7
+        self.nwd_weight = self.hyp.get('nwd_weight', 0.3)  # 从YAML读取，默认0.3
+        self.nwd_constant = self.hyp.get('nwd_constant', 12.8)  # 从YAML读取，默认12.8
 
         self.assigner = TaskAlignedAssigner(
             topk=tal_topk,
@@ -379,9 +426,11 @@ class v8DetectionLoss:
 
     def bbox_decode(self, anchor_points: torch.Tensor, pred_dist: torch.Tensor) -> torch.Tensor:
         """Decode predicted object bounding box coordinates from anchor points and distribution."""
-        if self.use_dfl:
-            b, a, c = pred_dist.shape  # batch, anchors, channels
-            pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
+        # if self.use_dfl:
+            # b, a, c = pred_dist.shape  # batch, anchors, channels
+            # pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
+            # ===================== 修改3：关闭DFL解码逻辑 =====================
+            # 直接返回dist2bbox，不做DFL的softmax+matmul操作
             # pred_dist = pred_dist.view(b, a, c // 4, 4).transpose(2,3).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
         return dist2bbox(pred_dist, anchor_points, xywh=False)
@@ -425,22 +474,50 @@ class v8DetectionLoss:
         loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
 
         # Bbox loss
+        # if fg_mask.sum():
+        #     loss[0], loss[2] = self.bbox_loss(
+        #         pred_distri,
+        #         pred_bboxes,
+        #         anchor_points,
+        #         target_bboxes / stride_tensor,
+        #         target_scores,
+        #         target_scores_sum,
+        #         fg_mask,
+        #         imgsz,
+        #         stride_tensor,
+        #     )
+        #
+        # loss[0] *= self.hyp.box  # box gain
+        # loss[1] *= self.hyp.cls  # cls gain
+        # loss[2] *= self.hyp.dfl  # dfl gain
+        # ===================== 重构Bbox Loss计算（DIoU + NWD + 关闭DFL） =====================
+        # Bbox loss
         if fg_mask.sum():
-            loss[0], loss[2] = self.bbox_loss(
-                pred_distri,
-                pred_bboxes,
-                anchor_points,
-                target_bboxes / stride_tensor,
-                target_scores,
-                target_scores_sum,
-                fg_mask,
-                imgsz,
-                stride_tensor,
-            )
+            # 1. 提取前景框的预测和目标
+            pred_bboxes_fg = pred_bboxes[fg_mask]  # [fg, 4] (xyxy)
+            target_bboxes_fg = (target_bboxes / stride_tensor)[fg_mask]  # [fg, 4] (xyxy)
+            target_scores_fg = target_scores[fg_mask]  # [fg, nc]
 
-        loss[0] *= self.hyp.box  # box gain
-        loss[1] *= self.hyp.cls  # cls gain
-        loss[2] *= self.hyp.dfl  # dfl gain
+            # 2. 计算DIoU Loss（替换CIoU）
+            # 注意：bbox_iou的iou_type参数设为"diou"，xyxy格式需指定xyxy=True
+            diou = bbox_iou(pred_bboxes_fg, target_bboxes_fg, xyxy=True, iou_type="diou")
+            diou_loss = (1.0 - diou).mean()  # DIoU Loss = 1 - DIoU
+
+            # 3. 计算NWD Loss（小目标友好），传入配置的常数
+            nwd_loss_val = nwd_loss(pred_bboxes_fg, target_bboxes_fg, constant=self.nwd_constant).mean()
+
+            # 4. 合并DIoU和NWD Loss（加权求和）
+            loss[0] = self.diou_weight * diou_loss + self.nwd_weight * nwd_loss_val
+
+            # 5. 强制关闭DFL Loss（置0）
+            loss[2] = 0.0
+
+        # 应用损失权重
+        loss[0] *= self.hyp.box  # box gain（你的配置是7.5）
+        loss[1] *= self.hyp.cls  # cls gain（你的配置是0.5）
+        loss[2] *= self.hyp.dfl  # dfl gain（即使配置不为0，loss[2]已置0）
+
+
         return (
             (fg_mask, target_gt_idx, target_bboxes, anchor_points, stride_tensor),
             loss,

@@ -25,6 +25,7 @@ __all__ = (
     "RepConv",
     "SpatialAttention",
     "BiFPN_Concat2",
+    "CAAttention",
 )
 
 
@@ -683,3 +684,33 @@ class BiFPN_Concat2(nn.Module):
         # Fast normalized fusion
         x = [weight[0] * x[0], weight[1] * x[1]]
         return torch.cat(x, self.d)
+
+
+# ===================== 修正后的CA注意力模块（核心修复） =====================
+class CAAttention(nn.Module):
+    """坐标注意力模块（修复维度拼接错误）"""
+
+    def __init__(self, c1, reduction=16):
+        super().__init__()
+        self.cv1 = nn.Conv2d(c1, c1 // reduction, 1, 1)  # 降维
+        self.cv2 = nn.Conv2d(c1 // reduction, c1, 1, 1)  # 升维
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        # 1. 沿W/H池化，得到[B,C,H,1]和[B,C,1,W]
+        h = torch.mean(x, dim=3, keepdim=True)  # 沿宽度池化，保留H
+        w = torch.mean(x, dim=2, keepdim=True)  # 沿高度池化，保留W
+
+        # 2. 修复：先展平到2维，再拼接（核心改这里）
+        h_flat = h.view(B, C, -1)  # [B,C,H,1] → [B,C,H]
+        w_flat = w.view(B, C, -1)  # [B,C,1,W] → [B,C,W]
+        y = torch.cat([h_flat, w_flat], dim=2)  # [B,C,H+W]
+
+        # 3. 编码+拆分注意力权重
+        y = self.cv2(torch.relu(self.cv1(y.unsqueeze(3)))).squeeze(3)  # 恢复4维再卷积
+        h_weight, w_weight = torch.split(y, [H, W], dim=2)
+
+        # 4. 恢复维度并应用权重
+        h_weight = h_weight.view(B, C, H, 1)  # [B,C,H] → [B,C,H,1]
+        w_weight = w_weight.view(B, C, 1, W)  # [B,C,W] → [B,C,1,W]
+        return x * h_weight * w_weight

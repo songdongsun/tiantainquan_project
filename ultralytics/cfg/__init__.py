@@ -187,6 +187,11 @@ CFG_FRACTION_KEYS = frozenset(
         "iou",
         "fraction",
         "multi_scale",
+        "wave",
+        "wave_p",
+        "wave_amplitude",
+        "wave_frequency",
+        "wave_direction"
     }
 )
 CFG_INT_KEYS = frozenset(

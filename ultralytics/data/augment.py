@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import random
 from copy import deepcopy
-from typing import Any
+from typing import Any, Dict
 
 import cv2
 import numpy as np
@@ -2453,6 +2453,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
             RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+            Wave(p=0.5,amplitude=5.0,frequency = 0.1,direction="horizontal")
         ]
     )  # transforms
 
@@ -2808,3 +2809,234 @@ class ToTensor:
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
+
+
+# 基于你提供的BaseTransform基类实现波动增强
+class WaveAugment:
+    """
+    波动数据增强工具（完全独立，不依赖BaseTransform的返回值）
+    核心：手动调用图像变换和标注变换，绕开基类限制
+    """
+
+    def __init__(self,
+                 amplitude: float = 5.0,  # 波动幅度（像素）
+                 frequency: float = 0.1,  # 波动频率
+                 direction: str = 'horizontal'):  # 波动方向
+        self.amplitude = amplitude
+        self.frequency = frequency
+        self.direction = direction.lower()
+        assert self.direction in ['horizontal', 'vertical'], \
+            f"direction must be 'horizontal' or 'vertical'"
+
+    def _create_wave_maps(self, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+        """生成波动坐标映射表"""
+        x, y = np.meshgrid(np.arange(w), np.arange(h))
+        if self.direction == 'horizontal':
+            dx = self.amplitude * np.sin(2 * np.pi * self.frequency * y / h)
+            dy = np.zeros_like(dx)
+        else:
+            dy = self.amplitude * np.sin(2 * np.pi * self.frequency * x / w)
+            dx = np.zeros_like(dy)
+
+        map_x = (x + dx).astype(np.float32)
+        map_y = (y + dy).astype(np.float32)
+        map_x = np.clip(map_x, 0, w - 1)
+        map_y = np.clip(map_y, 0, h - 1)
+        return map_x, map_y
+
+    def _warp_points(self, points: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
+        """对一组点应用波动变换"""
+        h, w = map_x.shape
+        warped_points = []
+        for (cx, cy) in points:
+            cx = np.clip(cx, 0, w - 1)
+            cy = np.clip(cy, 0, h - 1)
+            cx_floor, cx_ceil = int(np.floor(cx)), int(np.ceil(cx))
+            cy_floor, cy_ceil = int(np.floor(cy)), int(np.ceil(cy))
+
+            if cx_floor == cx_ceil and cy_floor == cy_ceil:
+                wx = map_x[cy_floor, cx_floor]
+                wy = map_y[cy_floor, cx_floor]
+            else:
+                # 双线性插值计算变换后坐标
+                wx1 = map_x[cy_floor, cx_floor] * (1 - (cy - cy_floor)) + map_x[cy_ceil, cx_floor] * (cy - cy_floor)
+                wx2 = map_x[cy_floor, cx_ceil] * (1 - (cy - cy_floor)) + map_x[cy_ceil, cx_ceil] * (cy - cy_floor)
+                wx = wx1 * (1 - (cx - cx_floor)) + wx2 * (cx - cx_floor)
+
+                wy1 = map_y[cy_floor, cx_floor] * (1 - (cy - cy_floor)) + map_y[cy_ceil, cx_floor] * (cy - cy_floor)
+                wy2 = map_y[cy_floor, cx_ceil] * (1 - (cy - cy_floor)) + map_y[cy_ceil, cx_ceil] * (cy - cy_floor)
+                wy = wy1 * (1 - (cx - cx_floor)) + wy2 * (cx - cx_floor)
+
+            warped_points.append([wx, wy])
+        return np.array(warped_points)
+
+    def warp_image(self, img: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        手动变换图像（核心独立方法）
+        返回：增强后的图像、map_x、map_y
+        """
+        h, w = img.shape[:2]
+        map_x, map_y = self._create_wave_maps(h, w)
+        img_warped = cv2.remap(
+            img, map_x, map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+        return img_warped, map_x, map_y
+
+    def warp_instances(self, instances, map_x: np.ndarray, map_y: np.ndarray) -> Any:
+        """
+        手动变换标注框（核心独立方法）
+        """
+        if len(instances) == 0 or not hasattr(instances, 'xyxy'):
+            return instances
+
+        h, w = map_x.shape
+        xyxy = instances.xyxy.cpu().numpy()
+        cls = instances.cls.cpu().numpy()
+
+        valid_boxes = []
+        valid_cls = []
+        for box, c in zip(xyxy, cls):
+            x1, y1, x2, y2 = box
+            corners = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+            warped_corners = self._warp_points(corners, map_x, map_y)
+
+            new_x1 = np.min(warped_corners[:, 0])
+            new_y1 = np.min(warped_corners[:, 1])
+            new_x2 = np.max(warped_corners[:, 0])
+            new_y2 = np.max(warped_corners[:, 1])
+
+            if new_x1 >= new_x2 or new_y1 >= new_y2:
+                continue
+            if new_x2 < 0 or new_y2 < 0 or new_x1 >= w or new_y1 >= h:
+                continue
+
+            valid_boxes.append([new_x1, new_y1, new_x2, new_y2])
+            valid_cls.append(c)
+
+        # 更新instances（直接修改对象属性）
+        if len(valid_boxes) > 0:
+            instances.xyxy = torch.tensor(valid_boxes, dtype=torch.float32)
+            instances.cls = torch.tensor(valid_cls, dtype=torch.float32)
+        else:
+            instances.xyxy = torch.empty((0, 4), dtype=torch.float32)
+            instances.cls = torch.empty((0,), dtype=torch.float32)
+
+        return instances
+
+class Wave:
+
+
+    def __init__(self, p: float = 0.5, amplitude: float = 5.0, frequency: float = 0.1, direction: str = "horizontal") -> None:
+
+        assert direction in {"horizontal", "vertical"}, f"Support direction `horizontal` or `vertical`, got {direction}"
+        assert 0 <= p <= 1.0, f"The probability should be in range [0, 1], but got {p}."
+
+        self.p = p
+        self.amplitude = amplitude
+        self.frequency = frequency
+        self.direction = direction
+
+    def _create_wave_maps(self, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+        """Generate wave distortion coordinate maps for image warping."""
+        x, y = np.meshgrid(np.arange(w), np.arange(h))
+        if self.direction == "horizontal":
+            dx = self.amplitude * np.sin(2 * np.pi * self.frequency * y / h)
+            dy = np.zeros_like(dx)
+        else:
+            dy = self.amplitude * np.sin(2 * np.pi * self.frequency * x / w)
+            dx = np.zeros_like(dy)
+        map_x = (x + dx).astype(np.float32)
+        map_y = (y + dy).astype(np.float32)
+        map_x = np.clip(map_x, 0, w - 1)
+        map_y = np.clip(map_y, 0, h - 1)
+        return map_x, map_y
+
+    def _warp_points(self, points: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
+        """Apply wave distortion to a set of points using bilinear interpolation (verified logic)."""
+        h, w = map_x.shape
+        warped_points = []
+        for (cx, cy) in points:
+            cx = np.clip(cx, 0, w - 1)
+            cy = np.clip(cy, 0, h - 1)
+            cx_floor, cx_ceil = int(np.floor(cx)), int(np.ceil(cx))
+            cy_floor, cy_ceil = int(np.floor(cy)), int(np.ceil(cy))
+
+            if cx_floor == cx_ceil and cy_floor == cy_ceil:
+                wx = map_x[cy_floor, cx_floor]
+                wy = map_y[cy_floor, cx_floor]
+            else:
+                # Bilinear interpolation for accurate point warping (verified logic)
+                wx1 = map_x[cy_floor, cx_floor] * (1 - (cy - cy_floor)) + map_x[cy_ceil, cx_floor] * (cy - cy_floor)
+                wx2 = map_x[cy_floor, cx_ceil] * (1 - (cy - cy_floor)) + map_x[cy_ceil, cx_ceil] * (cy - cy_floor)
+                wx = wx1 * (1 - (cx - cx_floor)) + wx2 * (cx - cx_floor)
+
+                wy1 = map_y[cy_floor, cx_floor] * (1 - (cy - cy_floor)) + map_y[cy_ceil, cx_floor] * (cy - cy_floor)
+                wy2 = map_y[cy_floor, cx_ceil] * (1 - (cy - cy_floor)) + map_y[cy_ceil, cx_ceil] * (cy - cy_floor)
+                wy = wy1 * (1 - (cx - cx_floor)) + wy2 * (cx - cx_floor)
+
+            warped_points.append([wx, wy])
+        return np.array(warped_points)
+
+    def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+        # Early return if probability condition not met (same as RandomFlip)
+        if random.random() > self.p:
+            return labels
+
+        img = labels["img"]
+        instances = labels.pop("instances")
+        h, w = img.shape[:2]
+
+        # Step 1: Create wave maps and warp image (verified logic)
+        map_x, map_y = self._create_wave_maps(h, w)
+        img_warped = cv2.remap(
+            img, map_x, map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+
+        # Step 2: Update instances (bounding boxes) if present (verified logic)
+        if len(instances) > 0 and hasattr(instances, "xyxy"):
+            xyxy = instances.xyxy.cpu().numpy()
+            cls = instances.cls.cpu().numpy() if hasattr(instances, "cls") else np.zeros(len(xyxy))
+
+            valid_boxes = []
+            valid_cls = []
+            for box, c in zip(xyxy, cls):
+                x1, y1, x2, y2 = box
+                # Get four corners of the bounding box
+                corners = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+                # Warp corners using verified logic
+                warped_corners = self._warp_points(corners, map_x, map_y)
+
+                # Calculate new bounding box from warped corners
+                new_x1 = np.min(warped_corners[:, 0])
+                new_y1 = np.min(warped_corners[:, 1])
+                new_x2 = np.max(warped_corners[:, 0])
+                new_y2 = np.max(warped_corners[:, 1])
+
+                # Filter invalid boxes (same as verified logic)
+                if new_x1 >= new_x2 or new_y1 >= new_y2:
+                    continue
+                if new_x2 < 0 or new_y2 < 0 or new_x1 >= w or new_y1 >= h:
+                    continue
+
+                valid_boxes.append([new_x1, new_y1, new_x2, new_y2])
+                valid_cls.append(c)
+
+            # Update instances (match RandomFlip's instance update style)
+            if len(valid_boxes) > 0:
+                instances.xyxy = torch.tensor(valid_boxes, dtype=torch.float32).to(instances.xyxy.device)
+                if hasattr(instances, "cls"):
+                    instances.cls = torch.tensor(valid_cls, dtype=torch.float32).to(instances.cls.device)
+            else:
+                # Clear instances if no valid boxes remain
+                instances.xyxy = torch.empty((0, 4), dtype=torch.float32).to(instances.xyxy.device)
+                if hasattr(instances, "cls"):
+                    instances.cls = torch.empty((0,), dtype=torch.float32).to(instances.cls.device)
+
+        # Step 3: Update labels dict (same as RandomFlip)
+        labels["img"] = np.ascontiguousarray(img_warped)
+        labels["instances"] = instances
+        return labels

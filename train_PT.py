@@ -25,8 +25,8 @@ if __name__ == "__main__":
                           device=device,
                           epochs = 300,
                           patience = 20,
-                          optimizer='SGD',  # 指定优化器为AdamW
-                          lr0=0.0025,  # AdamW学习率（SGD的1/10）
+                          optimizer='AdamW',  # 指定优化器为AdamW
+                          lr0=0.00025,  # AdamW学习率（SGD的1/10）
                           weight_decay=0.0005,
                           cos_lr=True,
                           )

@@ -187,11 +187,6 @@ CFG_FRACTION_KEYS = frozenset(
         "iou",
         "fraction",
         "multi_scale",
-        "wave",
-        "wave_p",
-        "wave_amplitude",
-        "wave_frequency",
-        "wave_direction"
     }
 )
 CFG_INT_KEYS = frozenset(
@@ -357,6 +352,8 @@ def check_cfg(cfg: dict, hard: bool = True) -> None:
         - Fraction keys are checked to be within the range [0.0, 1.0].
     """
     for k, v in cfg.items():
+        if k == "wave_amplitude" or k == "wave_direction":
+            continue
         if v is not None:  # None values may be from optional args
             if k in CFG_FLOAT_KEYS and not isinstance(v, FLOAT_OR_INT):
                 if hard:

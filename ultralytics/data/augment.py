@@ -2453,7 +2453,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
             RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-            Wave(p=0.5,amplitude=5.0,frequency = 0.1,direction="horizontal")
+            Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal")
         ]
     )  # transforms
 
@@ -2928,15 +2928,15 @@ class WaveAugment:
 class Wave:
 
 
-    def __init__(self, p: float = 0.5, amplitude: float = 5.0, frequency: float = 0.1, direction: str = "horizontal") -> None:
+    def __init__(self, wave_p: float = 0.5, wave_amplitude: float = 8.0, wave_frequency: float = 0.1, wave_direction: str = "horizontal") -> None:
 
-        assert direction in {"horizontal", "vertical"}, f"Support direction `horizontal` or `vertical`, got {direction}"
-        assert 0 <= p <= 1.0, f"The probability should be in range [0, 1], but got {p}."
+        assert wave_direction in {"horizontal", "vertical"}, f"Support direction `horizontal` or `vertical`, got {wave_direction}"
+        assert 0 <= wave_p <= 1.0, f"The probability should be in range [0, 1], but got {wave_p}."
 
-        self.p = p
-        self.amplitude = amplitude
-        self.frequency = frequency
-        self.direction = direction
+        self.p = wave_p
+        self.amplitude = wave_amplitude
+        self.frequency = wave_frequency
+        self.direction = wave_direction
 
     def _create_wave_maps(self, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
         """Generate wave distortion coordinate maps for image warping."""

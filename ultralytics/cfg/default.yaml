@@ -126,13 +126,6 @@ copy_paste_mode: flip # (str) copy-paste strategy for segmentation: flip or mixu
 auto_augment: randaugment # (str) classification auto augmentation policy: randaugment, autoaugment, augmix
 erasing: 0.4 # (float) random erasing probability for classification (0.0–1.0)
 
-# 波动增强参数
-wave: True
-wave_p: 0.3
-amplitude: 8.0
-frequency: 0.1
-direction: "horizontal"
-
 # Custom config.yaml ---------------------------------------------------------------------------------------------------
 cfg: # (str, optional) path to a config.yaml that overrides defaults
 

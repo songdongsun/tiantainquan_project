@@ -2453,7 +2453,8 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
             RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-            Wave(p=0.5,amplitude=5.0,frequency = 0.1,direction="horizontal")
+            Wave(p=0.5,amplitude=5.0,frequency = 0.1,direction="horizontal"),
+            GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
         ]
     )  # transforms
 
@@ -3039,4 +3040,49 @@ class Wave:
         # Step 3: Update labels dict (same as RandomFlip)
         labels["img"] = np.ascontiguousarray(img_warped)
         labels["instances"] = instances
+        return labels
+
+class GrayEnhance:
+    """灰度增强（模仿 YOLOv8 Wave 风格，不影响标签）"""
+
+    def __init__(
+        self,
+        p: float = 0.5,
+        contrast_range: tuple = (0.8, 1.8),
+        brightness_range: tuple = (-30, 30),
+    ) -> None:
+        assert 0 <= p <= 1.0, f"概率 p 必须在 [0,1]，当前为 {p}."
+        self.p = p
+        self.contrast_range = contrast_range
+        self.brightness_range = brightness_range
+
+    def _apply_gray_enhance(self, img: np.ndarray) -> np.ndarray:
+        """核心：灰度增强，保持 3 通道输出"""
+        # 转灰度
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # 随机对比度、亮度
+        alpha = random.uniform(*self.contrast_range)
+        beta = random.randint(*self.brightness_range)
+
+        # 增强
+        enhanced = cv2.convertScaleAbs(gray, alpha=alpha, beta=beta)
+
+        # 变回 3 通道（保持模型输入格式）
+        enhanced_3ch = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+
+        return np.ascontiguousarray(enhanced_3ch)
+
+    def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+        # 概率判断（和 Wave 完全一样）
+        if random.random() > self.p:
+            return labels
+
+        # 只增强图像，不碰 instances！
+        img = labels["img"]
+        img_enhanced = self._apply_gray_enhance(img)
+
+        # 只更新图像，标签完全不变
+        labels["img"] = img_enhanced
+
         return labels

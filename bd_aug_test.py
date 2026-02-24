@@ -108,7 +108,7 @@ if __name__ == "__main__":
     }
 
     # ========== 6. 应用波动增强（新版官方接口） ==========
-    wave_aug = Wave(p=1.0, amplitude=AMPLITUDE, frequency=FREQUENCY, direction=DIRECTION)
+    wave_aug = Wave(wave_p=1.0, wave_amplitude=AMPLITUDE, wave_frequency=FREQUENCY, wave_direction=DIRECTION)
     augmented_labels = wave_aug(labels)  # 调用新版__call__接口
 
     # 提取增强后的结果

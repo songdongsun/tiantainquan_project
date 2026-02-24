@@ -2453,7 +2453,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
             RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-            Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal")
+            Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal"),
             GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
         ]
     )  # transforms

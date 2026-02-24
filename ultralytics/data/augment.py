@@ -2455,6 +2455,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
             Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal"),
             GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
+            HistEnhance(p=0.5,enhance_type="clahe",clahe_clip_limit=2.0,clahe_grid_size=(8,8)),
         ]
     )  # transforms
 
@@ -3084,5 +3085,63 @@ class GrayEnhance:
 
         # 只更新图像，标签完全不变
         labels["img"] = img_enhanced
+
+        return labels
+
+class HistEnhance:
+    """
+    直方图增强（YOLOv8风格，仅用默认参数，不读取hyp）
+    核心：CLAHE自适应直方图均衡化（避免过曝），保持3通道，不修改标签
+    """
+
+    def __init__(
+        self,
+        p: float = 0.5,                # 增强概率
+        enhance_type: str = "clahe",   # 增强类型：he（普通均衡化）/ clahe（自适应，推荐）
+        clahe_clip_limit: float = 2.0, # CLAHE对比度限制（越大增强越明显）
+        clahe_grid_size: tuple = (8, 8) # CLAHE分块大小
+    ) -> None:
+        # 参数校验（和Wave类一致的风格）
+        assert 0 <= p <= 1.0, f"概率 p 必须在 [0,1]，当前为 {p}."
+        assert enhance_type in ["he", "clahe"], f"仅支持 he/clahe，当前为 {enhance_type}."
+        assert clahe_clip_limit > 0, f"CLAHE clip_limit 必须>0，当前为 {clahe_clip_limit}."
+        assert len(clahe_grid_size) == 2 and all(x > 0 for x in clahe_grid_size), \
+            f"CLAHE grid_size 必须是 (w,h) 且>0，当前为 {clahe_grid_size}."
+
+        # 初始化默认参数（不再读取hyp）
+        self.p = p
+        self.enhance_type = enhance_type
+        self.clahe_clip_limit = clahe_clip_limit
+        self.clahe_grid_size = clahe_grid_size
+
+    def _apply_hist_enhance(self, img: np.ndarray) -> np.ndarray:
+        """核心：直方图增强，保持3通道输出"""
+        # 3通道转灰度
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # 普通直方图均衡化
+        if self.enhance_type == "he":
+            enhanced_gray = cv2.equalizeHist(gray)
+        # 自适应直方图均衡化（推荐，避免过曝）
+        else:
+            clahe = cv2.createCLAHE(
+                clipLimit=self.clahe_clip_limit,
+                tileGridSize=self.clahe_grid_size
+            )
+            enhanced_gray = clahe.apply(gray)
+
+        # 灰度转回3通道（适配YOLOv8输入）
+        enhanced_3ch = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
+        return np.ascontiguousarray(enhanced_3ch)
+
+    def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+        """前向逻辑：和Wave/GrayEnhance完全对齐"""
+        # 概率判断，不满足则直接返回
+        if random.random() > self.p:
+            return labels
+
+        # 仅增强图像，不修改标签（直方图增强不影响目标位置）
+        img = labels["img"]
+        labels["img"] = self._apply_hist_enhance(img)
 
         return labels

@@ -2456,6 +2456,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal"),
             GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
             HistEnhance(p=0.5,enhance_type="clahe",clahe_clip_limit=2.0,clahe_grid_size=(8,8)),
+            SharpenEnhance(p=0.4,alpha=1.2,sigma=1.0,kernel_size=(5,5)),
         ]
     )  # transforms
 
@@ -3143,5 +3144,64 @@ class HistEnhance:
         # 仅增强图像，不修改标签（直方图增强不影响目标位置）
         img = labels["img"]
         labels["img"] = self._apply_hist_enhance(img)
+
+        return labels
+
+class SharpenEnhance:
+    """
+    锐化增强（YOLOv8风格，模仿Wave类实现）
+    核心：USM锐化（自然不放大噪声），保持3通道，不修改标签位置
+    """
+
+    def __init__(
+        self,
+        p: float = 0.5,                # 增强概率
+        alpha: float = 1.5,            # 锐化强度（>1增强，越大越明显）
+        sigma: float = 1.0,            # 高斯模糊标准差（控制锐化范围）
+        kernel_size: tuple = (5, 5)    # 高斯模糊核大小（奇数）
+    ) -> None:
+        # 参数校验（和Wave类一致的assert风格）
+        assert 0 <= p <= 1.0, f"概率 p 必须在 [0,1]，当前为 {p}."
+        assert alpha > 0, f"锐化强度 alpha 必须>0，当前为 {alpha}."
+        assert sigma >= 0, f"高斯标准差 sigma 必须≥0，当前为 {sigma}."
+        assert len(kernel_size) == 2 and all(x % 2 == 1 for x in kernel_size), \
+            f"核大小 kernel_size 必须是奇数元组，当前为 {kernel_size}."
+
+        # 初始化参数（无hyp依赖，纯默认）
+        self.p = p
+        self.alpha = alpha
+        self.sigma = sigma
+        self.kernel_size = kernel_size
+
+    def _apply_sharpen(self, img: np.ndarray) -> np.ndarray:
+        """核心：USM锐化实现（比普通卷积锐化更自然）"""
+        # 步骤1：对原图做高斯模糊（提取低频信息）
+        blurred = cv2.GaussianBlur(
+            img,
+            ksize=self.kernel_size,
+            sigmaX=self.sigma,
+            sigmaY=self.sigma,
+            borderType=cv2.BORDER_REPLICATE
+        )
+
+        # 步骤2：USM锐化公式 = 原图 × (1+alpha) - 模糊图 × alpha
+        # 转换为float避免uint8溢出
+        img_float = img.astype(np.float32)
+        blurred_float = blurred.astype(np.float32)
+        sharpened = (1 + self.alpha) * img_float - self.alpha * blurred_float
+
+        # 步骤3：裁剪到0~255，转回uint8，保持3通道
+        sharpened = np.clip(sharpened, 0, 255).astype(np.uint8)
+        return np.ascontiguousarray(sharpened)
+
+    def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+        """前向逻辑：和Wave/GrayEnhance/HistEnhance完全对齐"""
+        # 概率判断，不满足则直接返回
+        if random.random() > self.p:
+            return labels
+
+        # 仅增强图像，不修改标签（锐化不影响目标位置）
+        img = labels["img"]
+        labels["img"] = self._apply_sharpen(img)
 
         return labels

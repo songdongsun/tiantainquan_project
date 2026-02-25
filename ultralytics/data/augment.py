@@ -2457,6 +2457,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
             # HistEnhance(p=0.5,enhance_type="clahe",clahe_clip_limit=2.0,clahe_grid_size=(8,8)),
             SharpenEnhance(p=0.4,alpha=1.2,sigma=1.0,kernel_size=(5,5)),
+            BlurEnhance(p=0.3, blur_type="gaussian", kernel_size_range=(3,7), sigma_range=(1.0,2.0)),
         ]
     )  # transforms
 
@@ -3203,5 +3204,112 @@ class SharpenEnhance:
         # 仅增强图像，不修改标签（锐化不影响目标位置）
         img = labels["img"]
         labels["img"] = self._apply_sharpen(img)
+
+        return labels
+
+
+class BlurEnhance:
+    """
+    模糊增强（YOLOv8风格，模仿Wave类实现）
+    支持：高斯模糊/均值模糊/运动模糊，保持3通道，不修改标签位置
+    """
+
+    def __init__(
+            self,
+            p: float = 0.5,  # 增强概率
+            blur_type: str = "gaussian",  # 模糊类型：gaussian/median/motion
+            kernel_size_range: tuple = (3, 7),  # 模糊核大小范围（奇数）
+            sigma_range: tuple = (1.0, 3.0),  # 高斯模糊标准差范围
+            motion_angle_range: tuple = (0, 360),  # 运动模糊角度范围
+            motion_length_range: tuple = (5, 15)  # 运动模糊长度范围
+    ) -> None:
+        # 参数校验（和Wave类一致的assert风格）
+        assert 0 <= p <= 1.0, f"概率 p 必须在 [0,1]，当前为 {p}."
+        assert blur_type in ["gaussian", "median", "motion"], \
+            f"模糊类型仅支持 gaussian/median/motion，当前为 {blur_type}."
+        assert len(kernel_size_range) == 2 and all(x % 2 == 1 for x in kernel_size_range) and kernel_size_range[0] < \
+               kernel_size_range[1], \
+            f"核大小范围必须是递增奇数元组，当前为 {kernel_size_range}."
+        assert len(sigma_range) == 2 and sigma_range[0] >= 0 and sigma_range[0] < sigma_range[1], \
+            f"标准差范围必须是递增非负元组，当前为 {sigma_range}."
+        assert len(motion_angle_range) == 2 and motion_angle_range[0] <= motion_angle_range[1], \
+            f"运动角度范围必须是递增元组，当前为 {motion_angle_range}."
+        assert len(motion_length_range) == 2 and motion_length_range[0] > 0 and motion_length_range[0] < \
+               motion_length_range[1], \
+            f"运动长度范围必须是递增正整数元组，当前为 {motion_length_range}."
+
+        # 初始化参数（无hyp依赖，纯默认）
+        self.p = p
+        self.blur_type = blur_type
+        self.kernel_size_range = kernel_size_range
+        self.sigma_range = sigma_range
+        self.motion_angle_range = motion_angle_range
+        self.motion_length_range = motion_length_range
+
+    def _create_motion_kernel(self, kernel_size: int, angle: float, length: int) -> np.ndarray:
+        """生成运动模糊核（模仿Wave类的_create_wave_maps内部方法）"""
+        # 初始化运动核
+        kernel = np.zeros((kernel_size, kernel_size), dtype=np.float32)
+        center = kernel_size // 2
+
+        # 计算运动方向的坐标
+        angle_rad = np.deg2rad(angle)
+        dx = np.cos(angle_rad)
+        dy = np.sin(angle_rad)
+
+        # 填充运动核
+        for i in range(length):
+            x = int(center + dx * i)
+            y = int(center + dy * i)
+            if 0 <= x < kernel_size and 0 <= y < kernel_size:
+                kernel[y, x] += 1
+
+        # 归一化核
+        kernel = kernel / kernel.sum() if kernel.sum() > 0 else kernel
+        return kernel
+
+    def _apply_blur(self, img: np.ndarray) -> np.ndarray:
+        """核心：模糊增强实现，支持3种模糊类型"""
+        # 随机采样核大小（从范围中选奇数）
+        kernel_size = random.choice(range(self.kernel_size_range[0], self.kernel_size_range[1] + 1, 2))
+
+        if self.blur_type == "gaussian":
+            # 高斯模糊（最常用，自然模糊）
+            sigma = random.uniform(*self.sigma_range)
+            blurred = cv2.GaussianBlur(
+                img,
+                ksize=(kernel_size, kernel_size),
+                sigmaX=sigma,
+                sigmaY=sigma,
+                borderType=cv2.BORDER_REPLICATE
+            )
+
+        elif self.blur_type == "median":
+            # 均值模糊（均匀模糊，适合模拟失焦）
+            blurred = cv2.medianBlur(img, ksize=kernel_size)
+
+        else:
+            # 运动模糊（模拟快速移动拍摄的模糊）
+            angle = random.uniform(*self.motion_angle_range)
+            length = random.randint(*self.motion_length_range)
+            motion_kernel = self._create_motion_kernel(kernel_size, angle, length)
+            blurred = cv2.filter2D(
+                img,
+                ddepth=-1,
+                kernel=motion_kernel,
+                borderType=cv2.BORDER_REPLICATE
+            )
+
+        return np.ascontiguousarray(blurred)
+
+    def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+        """前向逻辑：和Wave/GrayEnhance/SharpenEnhance完全对齐"""
+        # 概率判断，不满足则直接返回
+        if random.random() > self.p:
+            return labels
+
+        # 仅增强图像，不修改标签（模糊不影响目标位置）
+        img = labels["img"]
+        labels["img"] = self._apply_blur(img)
 
         return labels

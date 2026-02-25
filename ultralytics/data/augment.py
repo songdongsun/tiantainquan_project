@@ -2455,7 +2455,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
             RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
             Wave(wave_p=0.5, wave_amplitude=8.0, wave_frequency= 0.1, wave_direction="horizontal"),
             GrayEnhance(p=0.5,contrast_range=(0.8,1.8),brightness_range=(-30,30)),
-            HistEnhance(p=0.5,enhance_type="clahe",clahe_clip_limit=2.0,clahe_grid_size=(8,8)),
+            # HistEnhance(p=0.5,enhance_type="clahe",clahe_clip_limit=2.0,clahe_grid_size=(8,8)),
             SharpenEnhance(p=0.4,alpha=1.2,sigma=1.0,kernel_size=(5,5)),
         ]
     )  # transforms
